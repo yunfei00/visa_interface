@@ -1,6 +1,7 @@
 import json
 import os
 import pyvisa
+import time
 
 
 class VisaInstrumentManager:
@@ -25,20 +26,25 @@ class VisaInstrumentManager:
             self.refresh_devices()
 
     def refresh_devices(self):
-        """搜索 VISA 设备并更新配置文件"""
-        rm = pyvisa.ResourceManager()
-        resources = rm.list_resources()
-
+        """搜索所有 VISA 后端的设备并更新配置文件"""
+        backends = ["@ni", "@keysight", "@rs", "@sim", ""]
         devices = {}
-        for res in resources:
+
+        for backend in backends:
             try:
-                inst = rm.open_resource(res)
-                inst.timeout = 2000
-                idn = inst.query("*IDN?").strip()
-                devices[res] = idn
-                inst.close()
+                rm = pyvisa.ResourceManager(backend)
+                resources = rm.list_resources()
+                for res in resources:
+                    try:
+                        inst = rm.open_resource(res)
+                        inst.timeout = 2000
+                        idn = inst.query("*IDN?").strip()
+                        devices[res] = {"idn": idn, "backend": backend}
+                        inst.close()
+                    except Exception as e:
+                        devices[res] = {"idn": f"未知设备/无法识别 ({e})", "backend": backend}
             except Exception as e:
-                devices[res] = f"未知设备/无法识别 ({e})"
+                print(f"⚠️ 后端 {backend} 不可用: {e}")
 
         self.devices = devices
         self._save_to_config()
@@ -50,37 +56,83 @@ class VisaInstrumentManager:
             json.dump(self.devices, f, indent=4, ensure_ascii=False)
 
     def get_devices(self):
-        """获取已知设备字典 {资源: 名称}"""
+        """获取已知设备字典 {资源: {idn, backend}}"""
         return self.devices
 
-    def get_instrument(self, keyword=None):
+    def get_instrument(self, keyword=None, auto_reconnect=True, max_retries=3):
         """
-        获取一个仪表实例
-        - keyword=None: 返回第一个设备
-        - keyword=字符串: 匹配IDN或资源名
+        获取一个仪表实例 (支持自动重连)
         """
-        rm = pyvisa.ResourceManager()
-        for res, name in self.devices.items():
-            if keyword is None or keyword.lower() in res.lower() or keyword.lower() in name.lower():
-                try:
-                    inst = rm.open_resource(res)
-                    print(f"✅ 已连接到: {res} ({name})")
-                    return inst
-                except Exception as e:
-                    print(f"⚠️ 打开 {res} 失败: {e}")
+        for res, info in self.devices.items():
+            idn = info.get("idn", "")
+            backend = info.get("backend", "")
+            if keyword is None or keyword.lower() in res.lower() or keyword.lower() in idn.lower():
+                return ReconnectableInstrument(res, backend, auto_reconnect, max_retries)
         return None
+
+
+class ReconnectableInstrument:
+    """带自动重连功能的仪表封装"""
+
+    def __init__(self, resource, backend, auto_reconnect=True, max_retries=3):
+        self.resource = resource
+        self.backend = backend
+        self.auto_reconnect = auto_reconnect
+        self.max_retries = max_retries
+        self.rm = None
+        self.inst = None
+        self._connect()
+
+    def _connect(self):
+        if self.inst:
+            try:
+                self.inst.close()
+            except Exception:
+                pass
+        self.rm = pyvisa.ResourceManager(self.backend)
+        self.inst = self.rm.open_resource(self.resource)
+        self.inst.timeout = 3000
+        print(f"🔌 已连接到 {self.resource} via {self.backend}")
+
+    def _safe_call(self, func, *args, **kwargs):
+        """包装器: 带自动重连和最大重试次数"""
+        retries = 0
+        while True:
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                if not self.auto_reconnect:
+                    raise
+                retries += 1
+                if retries > self.max_retries:
+                    raise RuntimeError(f"❌ 设备 {self.resource} 重连超过 {self.max_retries} 次仍失败: {e}")
+                print(f"⚠️ 操作失败: {e}, 正在重连({retries}/{self.max_retries})...")
+                time.sleep(1)
+                self._connect()
+
+    def query(self, cmd):
+        return self._safe_call(self.inst.query, cmd)
+
+    def write(self, cmd):
+        return self._safe_call(self.inst.write, cmd)
+
+    def read(self):
+        return self._safe_call(self.inst.read)
+
+    def close(self):
+        if self.inst:
+            self.inst.close()
 
 
 if __name__ == "__main__":
     manager = VisaInstrumentManager()
 
-    # 打印所有已知设备
-    devices = manager.get_devices()
-    for res, name in devices.items():
-        print(f"{res} -> {name}")
+    # 打印所有设备
+    for res, info in manager.get_devices().items():
+        print(f"{res} -> {info['idn']} (backend={info['backend']})")
 
-    # 获取某个仪表
-    inst = manager.get_instrument("CMW")  # 关键字匹配
+    # 获取一个带自动重连的设备（最多重试 3 次）
+    inst = manager.get_instrument("CMW", max_retries=3)
+
     if inst:
-        print(inst.query("*IDN?"))
-        inst.close()
+        print(inst.query("*IDN?"))   # 掉线时会尝试重连，最多 3 次
