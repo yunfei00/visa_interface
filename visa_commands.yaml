@@ -1,0 +1,86 @@
+common:
+  description: "通用命令，所有支持 SCPI 的仪表适用"
+  groups:
+    info:
+      idn: "*IDN?"         # 查询仪表信息
+      err: "SYST:ERR?"     # 查询错误
+    control:
+      reset: "*RST"        # 仪表复位
+      clear: "*CLS"        # 清除错误和状态
+
+scope:   # 示波器
+  description: "数字示波器控制命令"
+  groups:
+    channel:
+      channel_on: "CHAN{ch}:DISP ON"       # 打开通道
+      channel_off: "CHAN{ch}:DISP OFF"     # 关闭通道
+      channel_scale: "CHAN{ch}:SCAL {value}" # 设置通道刻度
+    timebase:
+      timebase: "TIMEBASE:SCALE {value}"   # 设置时基
+    trigger:
+      trigger_source: "TRIG:EDGE:SOUR CHAN{ch}" # 设置触发源
+      trigger_level: "TRIG:EDGE:LEV {value}"   # 设置触发电平
+    acquisition:
+      digitize: "DIGITIZE CHAN{ch}"        # 采样通道
+      waveform: "WAV:DATA?"                # 获取波形数据
+
+signal_generator:   # 信号源
+  description: "信号源 / 函数发生器"
+  groups:
+    setup:
+      freq: "FREQ {value}"     # 设置频率
+      volt: "VOLT {value}"     # 设置幅度
+      func: "FUNC {type}"      # 设置波形类型 (SIN/SQU/ARB)
+    output:
+      output_on: "OUTP ON"     # 打开输出
+      output_off: "OUTP OFF"   # 关闭输出
+
+power_supply:   # 电源
+  description: "可编程直流电源"
+  groups:
+    setup:
+      volt: "VOLT {value}"     # 设置电压
+      curr: "CURR {value}"     # 设置电流限制
+    output:
+      output_on: "OUTP ON"     # 打开输出
+      output_off: "OUTP OFF"   # 关闭输出
+    measure:
+      meas_v: "MEAS:VOLT?"     # 测量电压
+      meas_i: "MEAS:CURR?"     # 测量电流
+
+spectrum_analyzer:   # 频谱仪
+  description: "频谱分析仪 / 矢量信号分析仪"
+  groups:
+    freq:
+      center_freq: "FREQ:CENT {value}"     # 中心频率
+      span: "FREQ:SPAN {value}"            # 频率跨度
+    display:
+      ref_level: "DISP:TRAC:Y:RLEV {value}" # 参考电平
+    measure:
+      init: "INIT:IMM"                     # 开始测量
+      trace: "TRAC:DATA? TRACE1"           # 获取数据
+
+eload:   # 电子负载
+  description: "可编程电子负载"
+  groups:
+    setup:
+      mode: "MODE {type}"      # 工作模式 (CURR/VOLT/RES)
+      curr: "CURR {value}"     # 设置电流
+      volt: "VOLT {value}"     # 设置电压
+    input:
+      input_on: "INPUT ON"     # 启动负载
+      input_off: "INPUT OFF"   # 关闭负载
+    measure:
+      meas_v: "MEAS:VOLT?"     # 测量电压
+      meas_i: "MEAS:CURR?"     # 测量电流
+
+cmw500:   # 通信测试仪
+  description: "R&S CMW500 无线通信测试仪"
+  groups:
+    setup:
+      set_scenario: "ROUTe:LTE:CONNection:SCENario '{name}'"  # 设置测试场景
+    control:
+      call_on: "CALL:LTE:STATe ON"   # 启动呼叫
+      call_off: "CALL:LTE:STATe OFF" # 断开呼叫
+    measure:
+      sens_result: "FETCh:LTE:SENSitivity?" # 灵敏度结果

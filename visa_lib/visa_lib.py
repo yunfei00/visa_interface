@@ -1,13 +1,24 @@
+"""
+visa 的接口，并且包含了命令集接口
+具体的仪表只需要导入对应的命令集接口，只需要实现逻辑即可
+"""
 import json
 import os
 import pyvisa
 import time
+
+from visa_commands import Common, Scope
 
 
 class VisaInstrumentManager:
     def __init__(self, config_file="visa_devices.json"):
         self.config_file = config_file
         self.devices = {}
+        # 这个是通用的 都需要
+        self.cmd_common = Common()
+
+        # 这个根据实际的仪表导入
+        self.cmd_data = Scope()
 
         if os.path.exists(self.config_file):
             self._load_from_config()
@@ -38,7 +49,8 @@ class VisaInstrumentManager:
                     try:
                         inst = rm.open_resource(res)
                         inst.timeout = 2000
-                        idn = inst.query("*IDN?").strip()
+                        # idn = inst.query("*IDN?").strip()
+                        idn = inst.query(self.cmd_common.Info.IDN).strip()
                         devices[res] = {"idn": idn, "backend": backend}
                         inst.close()
                     except Exception as e:
